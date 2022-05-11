@@ -15,10 +15,14 @@ namespace Steganography
         Bitmap selectedImage;
 
         private string message = "";
-        private static string filename = "output.png";
+        private static readonly string filename = "output.png";
 
         private readonly string PATH = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), filename);
 
+        private void add(ref byte R) { R++; }
+        private void sub(ref byte R) { R--;}
+
+        delegate void AddOrSub(ref byte R);
         public MainForm()
         {
             InitializeComponent();
@@ -56,6 +60,21 @@ namespace Steganography
             return (n & 1) == 1;
         }
 
+        private void SetLSB(ref byte R, bool bit)
+        {
+            // decide to add or subtract 1 on each iteration 
+            // shitty .NET version doesnt let me use ternary here
+            AddOrSub method = add;
+            if (R >= 127) method = sub;
+
+            // compare least significant bit of pixel to current bit of message                    
+            // keep adding or subtracting 1 to R until the two bits are equal
+            while (GetLSB(R) != bit)
+            {
+                method(ref R);
+            }
+        }
+
         private void WriteMessage(ref Bitmap image)
         {
             int bitIndex = 0;
@@ -65,23 +84,30 @@ namespace Steganography
             // Bit order: Least Significant --> Most Significant
             BitArray msgBits = new BitArray(msgInBytes);
 
-            for (int i = 0; i < image.Width; i++)
+            int width = image.Width;
+            int height = image.Height;
+
+            for (int i = 0; i < width; i++)
             {
-                for(int j = 0; j < image.Height; j++)
+                for(int j = 0; j < height; j++)
                 {
                     if (bitIndex == msgBits.Length)
                     {
-                        // signify end of message with 8 zeroes of R
+                        // signify end of message with 8 zero LSBs
                         for(int x = 0; x < 8; x++)
                         {
-                            if(i == image.Width)
+                            if(i == width && (j + 1) != height)
                             {
                                 j++;
                                 i = 0;
                             }
                             Color current = image.GetPixel(i, j);
 
-                            image.SetPixel(i, j, Color.FromArgb(0, current.G, current.B));
+                            byte r = current.R;
+
+                            SetLSB(ref r, false);
+
+                            image.SetPixel(i, j, Color.FromArgb(r, current.G, current.B));
 
                             i++;
                         }
@@ -91,16 +117,9 @@ namespace Steganography
                     Color currentPixel = image.GetPixel(i, j);
                     byte R = currentPixel.R;
 
-                    bool pixelLSB = GetLSB(R);
                     bool currentMsgBit = msgBits[bitIndex];
 
-                    // compare least significant bit of pixel to current bit of message                    
-                    // keep adding 1 to R until the two bits are equal
-                    while (pixelLSB != currentMsgBit)
-                    {
-                        R++;
-                        pixelLSB = GetLSB(R);
-                    }
+                    SetLSB(ref R, currentMsgBit);
 
                     image.SetPixel(i, j, Color.FromArgb(R, currentPixel.G, currentPixel.B));
 
