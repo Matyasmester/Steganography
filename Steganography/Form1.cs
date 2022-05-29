@@ -17,12 +17,15 @@ namespace Steganography
         private string message = "";
         private static readonly string filename = "output.png";
 
+        private string imageFilter = "Image Files|*.png;*.bmp";
+
         private readonly string PATH = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), filename);
 
         private void add(ref byte R) { R++; }
-        private void sub(ref byte R) { R--;}
+        private void sub(ref byte R) { R--; }
 
-        delegate void AddOrSub(ref byte R);
+        private delegate void AddOrSub(ref byte R);
+
         public MainForm()
         {
             InitializeComponent();
@@ -37,7 +40,7 @@ namespace Steganography
         {
             OpenFileDialog dialog = new OpenFileDialog
             {
-                Filter = "Image Files|*.png;*.bmp"
+                Filter = imageFilter
             };
 
             DialogResult result = dialog.ShowDialog();
@@ -128,9 +131,61 @@ namespace Steganography
             }
         }
 
+        private string DecryptMessageFrom(in Bitmap image)
+        {
+            int height = image.Height;
+            int width = image.Width;
+
+            string message = "";
+
+            int chIndex = 0;
+            int chValue = 0;
+
+            bool[] bits = new bool[8];
+
+            for(int i = 0; i < width; i++)
+            {
+                for(int j = 0; j < height; j++)
+                {
+                    if (i == width && (j + 1) != height)
+                    {
+                        j++;
+                        i = 0;
+                    }
+                    Color current = image.GetPixel(i, j);
+                    byte R = current.R;
+                    bool LSB = GetLSB(R);
+
+                    if (chIndex == 7)
+                    {
+                        if (bits.All(x => !x)) break;
+                        chIndex = 0;
+
+                        for(int k = 0; k < 7; k++)
+                        {
+                            if (bits[k]) chValue += PowerTwo(k);
+                        }
+
+                        message += (char)chValue;
+                    }
+
+                    bits[chIndex] = LSB;
+                    chIndex++;
+                }
+            }
+
+            return message;
+        }
+
         private void DecryptButton_Click(object sender, EventArgs e)
         {
-            // TODO
+            string msg = DecryptMessageFrom(in selectedImage);
+
+            if (msg == null) return;
+
+            MessagePopup popup = new MessagePopup(msg);
+
+            popup.ShowDialog(owner: this);
         }
 
         private void EncryptButton_Click(object sender, EventArgs e)
@@ -174,8 +229,22 @@ namespace Steganography
             EncryptButton.Enabled = false;
             DecryptButton.Enabled = false;
 
-            selectedImage = null;
+            selectedImage.Dispose();
+            PreviewBox.Image.Dispose();
+
             PreviewBox.Image = null;
+        }
+
+        private int PowerTwo(int exp)
+        {
+            int retval = 1;
+
+            for(int i = 0; i < exp; i++)
+            {
+                retval *= 2;
+            }
+
+            return retval;
         }
     }
 }
